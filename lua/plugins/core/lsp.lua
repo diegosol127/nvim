@@ -27,13 +27,14 @@ return {
         "WhoIsSethDaniel/mason-tool-installer.nvim",
         opts = {
           ensure_installed = {
-            "lua-language-server",
-            "pyright",
-            "ruff",
             "clangd",
-            "stylua",
             "clang-format",
             "debugpy",
+            "lua-language-server",
+            "prettierd",
+            "pyright",
+            "ruff",
+            "stylua",
           },
         },
       },
@@ -112,6 +113,31 @@ return {
         },
       })
 
+      -- Matlab
+
+      vim.g.filetype_m = "matlab" -- stop .m files being detected as objc
+
+      -- Returns MATLAB's root dir if `matlab` is on PATH and version >= min, else nil
+      local function find_matlab(min)
+        local exe = vim.fn.exepath("matlab")
+        if exe == "" then return end
+        local real = vim.uv.fs_realpath(exe) -- resolve symlinks (Linux/macOS)
+        if not real then return end
+        local root = vim.fs.dirname(vim.fs.dirname(real)) -- <root>/bin/matlab -> <root>
+        local f = io.open(root .. "/VersionInfo.xml")
+        if not f then return end
+        local major, minor = f:read("*a"):match("<version>(%d+)%.(%d+)")
+        f:close()
+        if major and vim.version.ge({ tonumber(major), tonumber(minor), 0 }, min) then
+          return root
+        end
+      end
+      local root = find_matlab({ 9, 11, 0 }) -- 9.11 = R2021b, the minimum the server supports
+      if root then
+        vim.lsp.config("matlab_ls", { settings = { MATLAB = { installPath = root } } })
+        vim.lsp.enable("matlab_ls")
+      end
+
       -- Enable LSPs
       vim.lsp.enable({ "lua_ls", "pyright", "ruff", "clangd" })
 
@@ -129,6 +155,31 @@ return {
             vim.keymap.set("n", lhs, rhs, { buffer = ev.buf, desc = desc })
           end
 
+          local opts_sym = require("telescope.themes").get_ivy({
+            layout_config = { height = 0.50 },
+          })
+
+          local padding = 6
+          local function apply_lsp_doc_sym_config(w_frac)
+            local total_width = math.floor(vim.o.columns) / 2 - padding
+            local sym_width = math.floor(total_width * w_frac)
+            return vim.tbl_extend("force", opts_sym, {
+              symbol_width = sym_width,
+              symbol_type_width = total_width - sym_width,
+            })
+          end
+          local function apply_lsp_dyn_ws_sym_config(w_frac1, w_frac2)
+            local total_width = math.floor(vim.o.columns) / 2 - padding
+            local sym_width1 = math.floor(total_width * w_frac1)
+            local sym_width2 = math.floor(total_width * w_frac2)
+            return vim.tbl_extend("force", opts_sym, {
+              path_display = { "tail" },
+              fname_width = sym_width1,
+              symbol_width = sym_width2,
+              symbol_type_width = total_width - sym_width1 - sym_width2,
+            })
+          end
+
           -- Navigation
           map("<leader>ld", tb.lsp_definitions, "Go to definition")
           map("<leader>lD", vim.lsp.buf.declaration, "Go to declaration")
@@ -136,11 +187,17 @@ return {
           map("<leader>li", tb.lsp_implementations, "List implementations")
           map("<leader>lt", tb.lsp_type_definitions, "Go to type definition")
           map("<leader>lR", vim.lsp.buf.rename, "Rename symbol")
-          map("<leader>lc", vim.lsp.buf.code_action, "Code action")
+          map("<leader>la", vim.lsp.buf.code_action, "Code action")
           map("<leader>le", function()
             tb.diagnostics({ bufnr = 0 })
           end, "Buffer diagnostic list")
           map("<leader>lE", tb.diagnostics, "Project diagnostic list")
+          map("<leader>ls", function()
+            tb.lsp_document_symbols(apply_lsp_doc_sym_config(0.75))
+          end, "Document symbols")
+          map("<leader>lS", function()
+            tb.lsp_dynamic_workspace_symbols(apply_lsp_dyn_ws_sym_config(0.45, 0.45))
+          end, "Workspace symbols")
         end,
       })
     end,
