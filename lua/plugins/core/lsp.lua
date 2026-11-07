@@ -113,6 +113,31 @@ return {
         },
       })
 
+      -- Matlab
+
+      vim.g.filetype_m = "matlab" -- stop .m files being detected as objc
+
+      -- Returns MATLAB's root dir if `matlab` is on PATH and version >= min, else nil
+      local function find_matlab(min)
+        local exe = vim.fn.exepath("matlab")
+        if exe == "" then return end
+        local real = vim.uv.fs_realpath(exe) -- resolve symlinks (Linux/macOS)
+        if not real then return end
+        local root = vim.fs.dirname(vim.fs.dirname(real)) -- <root>/bin/matlab -> <root>
+        local f = io.open(root .. "/VersionInfo.xml")
+        if not f then return end
+        local major, minor = f:read("*a"):match("<version>(%d+)%.(%d+)")
+        f:close()
+        if major and vim.version.ge({ tonumber(major), tonumber(minor), 0 }, min) then
+          return root
+        end
+      end
+      local root = find_matlab({ 9, 11, 0 }) -- 9.11 = R2021b, the minimum the server supports
+      if root then
+        vim.lsp.config("matlab_ls", { settings = { MATLAB = { installPath = root } } })
+        vim.lsp.enable("matlab_ls")
+      end
+
       -- Enable LSPs
       vim.lsp.enable({ "lua_ls", "pyright", "ruff", "clangd" })
 
